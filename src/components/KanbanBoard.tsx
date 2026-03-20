@@ -1,111 +1,231 @@
-import { useState, useEffect } from 'react';
-import { useCards } from '../hooks/useCards';
-import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/card';
-import { DndContext, closestCorners, useDraggable, useDroppable } from '@dnd-kit/core';
-import { arrayMove } from '@dnd-kit/core';
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
+import { SortableContext, arrayMove } from "@dnd-kit/sortable";
+import React, { useState } from "react";
+import { Button } from "./ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "./ui/dialog";
+import { Input } from "./ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
+import { useCards, useMoveCard, useCreateCard } from "../hooks/useCards";
+import type { Card } from "../lib/supabase";
+import KanbanColumn from "./KanbanColumn";
+import KanbanCard from "./KanbanCard";
 
-interface CardItem {
-  id: string;
-  board_id: string;
-  column_name: 'todo' | 'in_progress' | 'done';
-  title: string;
-  description: string;
-  position: number;
-  created_at: string;
+interface KanbanBoardProps {
+  boardId: string;
+  boardTitle: string;
+  onBack: () => void;
 }
 
-interface Column {
-  id: 'todo' | 'in_progress' | 'done';
-  title: string;
-  cards: CardItem[];
-}
+const KanbanBoard: React.FC<KanbanBoardProps> = ({
+  boardId,
+  boardTitle,
+  onBack,
+}) => {
+  const { data: serverCards = [] } = useCards(boardId);
+  const moveCard = useMoveCard();
+  const createCard = useCreateCard();
 
-const KanbanBoard = () => {
-  const [boardId, setBoardId] = useState<string>('');
-  const { data: cards = [] } = useCards(boardId);
-  const [columns, setColumns] = useState<Column[]>([]);
+  const [localCards, setLocalCards] = useState<Card[]>([]);
+  const [activeCard, setActiveCard] = useState<Card | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newStatus, setNewStatus] = useState<"todo" | "in_progress" | "done">(
+    "todo",
+  );
 
-  useEffect(() => {
-    if (cards.length > 0) {
-      const newColumns = [
-        { id: 'todo', title: 'Todo', cards: [] },
-        { id: 'in_progress', title: 'In Progress', cards: [] },
-        { id: 'done', title: 'Done', cards: [] },
-      ];
+  const cards = localCards.length > 0 ? localCards : serverCards;
 
-      cards.forEach((card: CardItem) => {
-        const column = newColumns.find(col => col.id === card.column_name);
-        if (column) {
-          column.cards.push(card);
-        }
-      });
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+  );
 
-      setColumns(newColumns);
-    }
-  }, [cards]);
+  const handleDragStart = (event: DragStartEvent) => {
+    const card = cards.find((c) => c.id === event.active.id);
+    if (card) setActiveCard(card);
+    setLocalCards([...serverCards]);
+  };
 
-  const handleDragEnd = (event: any) => {
+  const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+    setActiveCard(null);
 
-    if (active && over) {
-      const activeCard = active.data.current;
-      const overColumn = columns.find(col => col.id === over.id);
-
-      if (overColumn) {
-        const newColumns = columns.map(column => {
-          if (column.id === activeCard.column_name) {
-            return {
-              ...column,
-              cards: column.cards.filter(card => card.id !== activeCard.id),
-            };
-          }
-          if (column.id === overColumn.id) {
-            return {
-              ...column,
-              cards: [...column.cards, activeCard],
-            };
-          }
-          return column;
-        });
-
-        setColumns(newColumns);
-
-        // Call useMoveCard to update the card's column and position
-        // You would need to implement the actual mutation logic here
-        // For example, using the useMoveCard hook from your hooks file
-        // useMoveCard.mutate({ id: activeCard.id, column_name: overColumn.id, position: newColumns.findIndex(col => col.id === overColumn.id) });
-      }
+    if (!over) {
+      setLocalCards([]);
+      return;
     }
+
+    const activeCardData = cards.find((c) => c.id === active.id);
+    if (!activeCardData) return;
+
+    const overIsColumn = ["todo", "in_progress", "done"].includes(
+      over.id as string,
+    );
+    const overCard = cards.find((c) => c.id === over.id);
+    const targetColumn = overIsColumn
+      ? (over.id as "todo" | "in_progress" | "done")
+      : (overCard?.column_name ?? activeCardData.column_name);
+
+    if (activeCardData.column_name === targetColumn && active.id === over.id) {
+      setLocalCards([]);
+      return;
+    }
+
+    const updated = cards.map((c) =>
+      c.id === active.id ? { ...c, column_name: targetColumn } : c,
+    );
+
+    if (!overIsColumn && overCard) {
+      const oldIndex = updated.findIndex((c) => c.id === active.id);
+      const newIndex = updated.findIndex((c) => c.id === over.id);
+      setLocalCards(arrayMove(updated, oldIndex, newIndex));
+    } else {
+      setLocalCards(updated);
+    }
+
+    moveCard.mutate(
+      {
+        cardId: activeCardData.id,
+        column_name: targetColumn,
+        position: overIsColumn
+          ? cards.filter((c) => c.column_name === targetColumn).length
+          : cards.findIndex((c) => c.id === over.id),
+      },
+      {
+        onSuccess: () => setLocalCards([]),
+        onError: () => setLocalCards([]),
+      },
+    );
+  };
+
+  const handleCreateCard = () => {
+    if (!newTitle.trim()) return;
+    createCard.mutate({
+      board_id: boardId,
+      column_name: newStatus,
+      title: newTitle.trim(),
+      description: newDescription.trim() || null,
+      position: cards.filter((c) => c.column_name === newStatus).length,
+    });
+    setNewTitle("");
+    setNewDescription("");
+    setNewStatus("todo");
+    setDialogOpen(false);
+  };
+
+  const columns = {
+    todo: cards.filter((c) => c.column_name === "todo"),
+    in_progress: cards.filter((c) => c.column_name === "in_progress"),
+    done: cards.filter((c) => c.column_name === "done"),
   };
 
   return (
-    <DndContext onDragEnd={handleDragEnd} collisionDetection={closestCorners}>
-      <div className="flex space-x-4">
-        {columns.map(column => (
-          <div key={column.id} className="w-1/3">
-            <Card>
-              <CardHeader>
-                <CardTitle>{column.title}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {column.cards.map(card => (
-                  <div key={card.id} className="mb-2">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>{card.title}</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p>{card.description}</p>
-                      </CardContent>
-                    </Card>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </div>
-        ))}
+    <div className="min-h-screen bg-background text-foreground p-8">
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="sm" onClick={onBack}>
+            ← Boards
+          </Button>
+          <h1 className="text-2xl font-bold">{boardTitle}</h1>
+        </div>
+        <Button onClick={() => setDialogOpen(true)}>+ New Card</Button>
       </div>
-    </DndContext>
+
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="grid grid-cols-3 gap-6">
+          {Object.entries(columns).map(([columnName, columnCards]) => (
+            <SortableContext
+              key={columnName}
+              items={columnCards.map((c) => c.id)}
+            >
+              <KanbanColumn
+                columnName={columnName as "todo" | "in_progress" | "done"}
+                cards={columnCards}
+                boardId={boardId}
+              />
+            </SortableContext>
+          ))}
+        </div>
+
+        <DragOverlay>
+          {activeCard && <KanbanCard card={activeCard} />}
+        </DragOverlay>
+      </DndContext>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Card</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <Input
+              autoFocus
+              placeholder="Card title"
+              value={newTitle}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setNewTitle(e.target.value)
+              }
+              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                if (e.key === "Enter") handleCreateCard();
+              }}
+            />
+            <Input
+              placeholder="Description (optional)"
+              value={newDescription}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setNewDescription(e.target.value)
+              }
+            />
+            <Select
+              value={newStatus}
+              onValueChange={(v: string) =>
+                setNewStatus(v as "todo" | "in_progress" | "done")
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todo">Todo</SelectItem>
+                <SelectItem value="in_progress">In Progress</SelectItem>
+                <SelectItem value="done">Done</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateCard}>Create</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };
 

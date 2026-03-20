@@ -1,117 +1,86 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { supabase } from '../lib/supabase'
-import { Board, Card } from '../lib/supabase'
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "../lib/supabase";
+import type { Card } from "../lib/supabase";
 
-// Type guard for Card
-function isCard(data: any): data is Card {
-  return (
-    data && 
-    typeof data.id === 'string' && 
-    typeof data.board_id === 'string' &&
-    ['todo', 'in_progress', 'done'].includes(data.column_name) &&
-    typeof data.title === 'string' &&
-    (data.description === null || typeof data.description === 'string') &&
-    typeof data.position === 'number' &&
-    typeof data.created_at === 'string'
-  )
-}
-
-// Type guard for Board
-function isBoard(data: any): data is Board {
-  return (
-    data && 
-    typeof data.id === 'string' && 
-    typeof data.title === 'string' &&
-    typeof data.created_at === 'string'
-  )
-}
-
-// Custom hook to fetch all cards for a board ordered by position
-export function useCards(boardId: string) {
-  return useQuery({
-    queryKey: ['cards', boardId],
+// Fetch cards for a specific board
+export const useCards = (boardId: string) => {
+  return useQuery<Card[], Error>({
+    queryKey: ["cards", boardId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('cards')
-        .select('*')
-        .eq('board_id', boardId)
-        .order('position', { ascending: true })
-
-      if (error) {
-        throw new Error(error.message)
-      }
-
-      if (!data) {
-        throw new Error('No data returned from Supabase')
-      }
-
-      // Validate data
-      if (!Array.isArray(data)) {
-        throw new Error('Expected array of cards')
-      }
-
-      for (const item of data) {
-        if (!isCard(item)) {
-          throw new Error('Invalid card data')
-        }
-      }
-
-      return data
+        .from("cards")
+        .select("*")
+        .eq("board_id", boardId)
+        .order("position");
+      if (error) throw new Error(error.message);
+      return data as Card[];
     },
-  })
-}
+  });
+};
 
-// Custom hook for creating a new card
-export function useCreateCard() {
-  const queryClient = useQueryClient()
+// Create a new card
+export const useCreateCard = () => {
+  const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: async (card: Omit<Card, 'id' | 'created_at'>) => {
+  return useMutation<Card, Error, Omit<Card, "id" | "created_at">>({
+    mutationFn: async (card) => {
       const { data, error } = await supabase
-        .from('cards')
-        .insert([card])
-        .select('*')
-
-      if (error) {
-        throw new Error(error.message)
-      }
-
-      if (!data || !isCard(data[0])) {
-        throw new Error('Invalid response from Supabase')
-      }
-
-      return data[0]
+        .from("cards")
+        .insert(card)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      return data as Card;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cards'] })
+    onSuccess: (newCard) => {
+      queryClient.setQueryData<Card[]>(["cards", newCard.board_id], (old) =>
+        old ? [...old, newCard] : [newCard],
+      );
     },
-  })
-}
+  });
+};
 
-// Custom hook for moving a card
-export function useMoveCard() {
-  const queryClient = useQueryClient()
+// Move a card
+export const useMoveCard = () => {
+  const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: async ({ id, column_name, position }: { id: string; column_name: Card['column_name']; position: number }) => {
+  return useMutation<
+    Card,
+    Error,
+    { cardId: string; position: number; column_name: Card["column_name"] }
+  >({
+    mutationFn: async ({ cardId, position, column_name }) => {
       const { data, error } = await supabase
-        .from('cards')
-        .update({ column_name, position })
-        .eq('id', id)
-        .select('*')
-
-      if (error) {
-        throw new Error(error.message)
-      }
-
-      if (!data || !isCard(data[0])) {
-        throw new Error('Invalid response from Supabase')
-      }
-
-      return data[0]
+        .from("cards")
+        .update({ position, column_name })
+        .eq("id", cardId)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      return data as Card;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cards'] })
+    onMutate: async ({ cardId, position, column_name }) => {
+      await queryClient.cancelQueries({ queryKey: ["cards"] });
+
+      const previousCards = queryClient.getQueryData<Card[]>(["cards"]);
+
+      queryClient.setQueryData<Card[]>(["cards"], (old) => {
+        if (!old) return old;
+        return old.map((card: Card) =>
+          card.id === cardId ? { ...card, position, column_name } : card,
+        );
+      });
+
+      return { previousCards };
     },
-  })
-}
+    onError: (_error, _variables, context) => {
+      const safeContext = context as { previousCards?: Card[] } | undefined;
+      if (safeContext?.previousCards) {
+        queryClient.setQueryData(["cards"], safeContext.previousCards);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["cards"] });
+    },
+  });
+};
