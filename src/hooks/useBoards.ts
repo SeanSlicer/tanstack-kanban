@@ -23,9 +23,12 @@ export const useCreateBoard = () => {
 
   return useMutation<Board, Error, string>({
     mutationFn: async (title) => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       const { data, error } = await supabase
         .from("boards")
-        .insert({ title })
+        .insert({ title, user_id: user?.id })
         .select()
         .single();
       if (error) throw new Error(error.message);

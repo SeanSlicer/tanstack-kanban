@@ -7,9 +7,15 @@ import type { Board } from "../lib/supabase";
 
 interface BoardSelectorProps {
   onSelectBoard: (board: Board) => void;
+  onSignOut: () => void;
+  userEmail: string;
 }
 
-const BoardSelector: React.FC<BoardSelectorProps> = ({ onSelectBoard }) => {
+const BoardSelector: React.FC<BoardSelectorProps> = ({
+  onSelectBoard,
+  onSignOut,
+  userEmail,
+}) => {
   const { data: boards = [], isLoading } = useBoards();
   const createBoard = useCreateBoard();
   const [newBoardTitle, setNewBoardTitle] = useState("");
@@ -29,10 +35,15 @@ const BoardSelector: React.FC<BoardSelectorProps> = ({ onSelectBoard }) => {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-8">
       <div className="w-full max-w-lg">
-        <h1 className="text-3xl font-bold mb-2">My Boards</h1>
-        <p className="text-muted-foreground mb-8">
-          Select a board to get started
-        </p>
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold">My Boards</h1>
+            <p className="text-muted-foreground text-sm mt-1">{userEmail}</p>
+          </div>
+          <Button variant="ghost" size="sm" onClick={onSignOut}>
+            Sign Out
+          </Button>
+        </div>
 
         {isLoading ? (
           <p className="text-muted-foreground">Loading boards...</p>

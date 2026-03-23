@@ -33,12 +33,14 @@ interface KanbanBoardProps {
   boardId: string;
   boardTitle: string;
   onBack: () => void;
+  onSignOut: () => void;
 }
 
 const KanbanBoard: React.FC<KanbanBoardProps> = ({
   boardId,
   boardTitle,
   onBack,
+  onSignOut,
 }) => {
   const { data: serverCards = [] } = useCards(boardId);
   const moveCard = useMoveCard();
@@ -149,7 +151,12 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({
           </Button>
           <h1 className="text-2xl font-bold">{boardTitle}</h1>
         </div>
-        <Button onClick={() => setDialogOpen(true)}>+ New Card</Button>
+        <div className="flex items-center gap-3">
+          <Button onClick={() => setDialogOpen(true)}>+ New Card</Button>
+          <Button variant="ghost" size="sm" onClick={onSignOut}>
+            Sign Out
+          </Button>
+        </div>
       </div>
 
       <DndContext
