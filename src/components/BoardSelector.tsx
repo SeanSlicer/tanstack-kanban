@@ -3,23 +3,27 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { useBoards, useCreateBoard } from "../hooks/useBoards";
+import ProfileDialog from "./ProfileDialog";
 import type { Board } from "../lib/supabase";
 
 interface BoardSelectorProps {
   onSelectBoard: (board: Board) => void;
   onSignOut: () => void;
-  userEmail: string;
+  userId: string;
+  userName: string;
 }
 
 const BoardSelector: React.FC<BoardSelectorProps> = ({
   onSelectBoard,
   onSignOut,
-  userEmail,
+  userId,
+  userName,
 }) => {
   const { data: boards = [], isLoading } = useBoards();
   const createBoard = useCreateBoard();
   const [newBoardTitle, setNewBoardTitle] = useState("");
   const [creating, setCreating] = useState(false);
+  const [displayName, setDisplayName] = useState(userName);
 
   const handleCreate = () => {
     if (!newBoardTitle.trim()) return;
@@ -38,11 +42,14 @@ const BoardSelector: React.FC<BoardSelectorProps> = ({
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold">My Boards</h1>
-            <p className="text-muted-foreground text-sm mt-1">{userEmail}</p>
+            <p className="text-muted-foreground text-sm mt-1">{displayName}</p>
           </div>
-          <Button variant="ghost" size="sm" onClick={onSignOut}>
-            Sign Out
-          </Button>
+          <div className="flex items-center gap-2">
+            <ProfileDialog userId={userId} onNameChange={setDisplayName} />
+            <Button variant="ghost" size="sm" onClick={onSignOut}>
+              Sign Out
+            </Button>
+          </div>
         </div>
 
         {isLoading ? (

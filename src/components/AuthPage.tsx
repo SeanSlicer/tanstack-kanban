@@ -13,6 +13,7 @@ import { useAuth } from "../hooks/useAuth";
 const AuthPage: React.FC = () => {
   const { signIn, signUp } = useAuth();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -24,6 +25,7 @@ const AuthPage: React.FC = () => {
     setMode(newMode);
     setError(null);
     setSuccess(null);
+    setFullName("");
     setEmail("");
     setPassword("");
     setConfirmPassword("");
@@ -35,6 +37,10 @@ const AuthPage: React.FC = () => {
     setSuccess(null);
 
     if (mode === "signup") {
+      if (!fullName.trim()) {
+        setError("Please enter your full name");
+        return;
+      }
       if (password !== confirmPassword) {
         setError("Passwords do not match");
         return;
@@ -50,7 +56,7 @@ const AuthPage: React.FC = () => {
       if (mode === "signin") {
         await signIn(email, password);
       } else {
-        await signUp(email, password);
+        await signUp(email, password, fullName.trim());
         setSuccess(
           "Check your email to confirm your account before signing in.",
         );
@@ -85,6 +91,19 @@ const AuthPage: React.FC = () => {
         </CardHeader>
 
         <CardContent className="flex flex-col gap-4">
+          {mode === "signup" && (
+            <Input
+              type="text"
+              placeholder="Full name"
+              value={fullName}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setFullName(e.target.value)
+              }
+              onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                if (e.key === "Enter") handleSubmit();
+              }}
+            />
+          )}
           <Input
             type="email"
             placeholder="Email"
