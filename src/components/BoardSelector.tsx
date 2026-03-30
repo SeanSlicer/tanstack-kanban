@@ -1,8 +1,10 @@
 import React, { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { useBoards, useCreateBoard } from "../hooks/useBoards";
+import { useProfile } from "../hooks/useProfile";
 import ProfileDialog from "./ProfileDialog";
 import type { Board } from "../lib/supabase";
 
@@ -21,6 +23,8 @@ const BoardSelector: React.FC<BoardSelectorProps> = ({
 }) => {
   const { data: boards = [], isLoading } = useBoards();
   const createBoard = useCreateBoard();
+  const { data: profile } = useProfile(userId);
+  const navigate = useNavigate();
   const [newBoardTitle, setNewBoardTitle] = useState("");
   const [creating, setCreating] = useState(false);
   const [displayName, setDisplayName] = useState(userName);
@@ -45,6 +49,15 @@ const BoardSelector: React.FC<BoardSelectorProps> = ({
             <p className="text-muted-foreground text-sm mt-1">{displayName}</p>
           </div>
           <div className="flex items-center gap-2">
+            {profile?.is_admin && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate({ to: "/admin" })}
+              >
+                Admin
+              </Button>
+            )}
             <ProfileDialog userId={userId} onNameChange={setDisplayName} />
             <Button variant="ghost" size="sm" onClick={onSignOut}>
               Sign Out

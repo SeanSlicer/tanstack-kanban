@@ -6,6 +6,7 @@ export type Profile = {
   full_name: string;
   email: string;
   avatar_url: string | null;
+  is_admin: boolean;
   created_at: string;
 };
 
@@ -15,7 +16,7 @@ export const useProfiles = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, full_name, email, avatar_url, created_at")
+        .select("id, full_name, email, avatar_url, is_admin, created_at")
         .order("full_name");
       if (error) throw new Error(error.message);
       return data as Profile[];

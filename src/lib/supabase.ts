@@ -10,6 +10,7 @@ export const supabase = createClient(supabaseUrl, supabaseKey)
 export type Board = {
   id: string
   title: string
+  user_id: string | null
   created_at: string
 }
 

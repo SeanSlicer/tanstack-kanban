@@ -14,6 +14,7 @@ import type { Board } from "./lib/supabase";
 import AuthPage from "./components/AuthPage";
 import BoardSelector from "./components/BoardSelector";
 import KanbanBoard from "./components/KanbanBoard";
+import AdminPage from "./components/AdminPage";
 
 const checkAuth = async () => {
   const {
@@ -102,7 +103,30 @@ const boardRoute = createRoute({
   },
 });
 
-const routeTree = rootRoute.addChildren([loginRoute, indexRoute, boardRoute]);
+const adminRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin",
+  beforeLoad: async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) throw redirect({ to: "/login" });
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("is_admin")
+      .eq("id", session.user.id)
+      .single();
+    if (!profile?.is_admin) throw redirect({ to: "/" });
+  },
+  component: AdminPage,
+});
+
+const routeTree = rootRoute.addChildren([
+  loginRoute,
+  indexRoute,
+  boardRoute,
+  adminRoute,
+]);
 
 export const router = createRouter({ routeTree });
 
