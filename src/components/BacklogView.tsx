@@ -1,5 +1,11 @@
 import React, { useState } from "react";
 import { GripVertical } from "lucide-react";
+
+const PRIORITY_STYLES: Record<string, string> = {
+  low: "bg-green-500/15 text-green-600 dark:text-green-400",
+  medium: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+  high: "bg-red-500/15 text-red-600 dark:text-red-400",
+};
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card, CardContent } from "./ui/card";
@@ -39,9 +45,15 @@ const BacklogView: React.FC<BacklogViewProps> = ({ boardId, profilesMap }) => {
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newAssignee, setNewAssignee] = useState("none");
+  const [newPriority, setNewPriority] = useState("none");
+  const [newDueDate, setNewDueDate] = useState("");
 
   const [editCard, setEditCard] = useState<CardType | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
   const [editAssignee, setEditAssignee] = useState("none");
+  const [editPriority, setEditPriority] = useState("none");
+  const [editDueDate, setEditDueDate] = useState("");
 
   const handleCreate = () => {
     if (!newTitle.trim()) return;
@@ -52,10 +64,14 @@ const BacklogView: React.FC<BacklogViewProps> = ({ boardId, profilesMap }) => {
       description: newDescription.trim() || null,
       position: backlogCards.length,
       assigned_to: newAssignee === "none" ? null : newAssignee,
+      priority: newPriority === "none" ? undefined : (newPriority as CardType["priority"]),
+      due_date: newDueDate || undefined,
     });
     setNewTitle("");
     setNewDescription("");
     setNewAssignee("none");
+    setNewPriority("none");
+    setNewDueDate("");
     setCreateOpen(false);
   };
 
@@ -65,7 +81,11 @@ const BacklogView: React.FC<BacklogViewProps> = ({ boardId, profilesMap }) => {
 
   const handleOpenEdit = (card: CardType) => {
     setEditCard(card);
+    setEditTitle(card.title);
+    setEditDescription(card.description ?? "");
     setEditAssignee(card.assigned_to ?? "none");
+    setEditPriority(card.priority ?? "none");
+    setEditDueDate(card.due_date ?? "");
   };
 
   const handleSaveEdit = () => {
@@ -73,7 +93,11 @@ const BacklogView: React.FC<BacklogViewProps> = ({ boardId, profilesMap }) => {
     updateCard.mutate(
       {
         cardId: editCard.id,
+        title: editTitle.trim() || editCard.title,
+        description: editDescription.trim() || null,
         assigned_to: editAssignee === "none" ? null : editAssignee,
+        priority: editPriority === "none" ? null : (editPriority as CardType["priority"]),
+        due_date: editDueDate || null,
       },
       { onSuccess: () => setEditCard(null) },
     );
@@ -119,9 +143,23 @@ const BacklogView: React.FC<BacklogViewProps> = ({ boardId, profilesMap }) => {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">{card.title}</p>
                     {card.description && (
-                      <p className="text-xs text-muted-foreground mt-0.5">
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
                         {card.description}
                       </p>
+                    )}
+                    {(card.priority || card.due_date) && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {card.priority && (
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded capitalize ${PRIORITY_STYLES[card.priority]}`}>
+                            {card.priority}
+                          </span>
+                        )}
+                        {card.due_date && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                            {new Date(card.due_date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
                   {assignee ? (
@@ -187,6 +225,26 @@ const BacklogView: React.FC<BacklogViewProps> = ({ boardId, profilesMap }) => {
                 setNewDescription(e.target.value)
               }
             />
+            <div className="grid grid-cols-2 gap-3">
+              <Select value={newPriority} onValueChange={setNewPriority}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No priority</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                type="date"
+                value={newDueDate}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setNewDueDate(e.target.value)
+                }
+              />
+            </div>
             {profiles.length > 0 && (
               <Select value={newAssignee} onValueChange={setNewAssignee}>
                 <SelectTrigger>
@@ -217,27 +275,76 @@ const BacklogView: React.FC<BacklogViewProps> = ({ boardId, profilesMap }) => {
         </DialogContent>
       </Dialog>
 
-      {/* Edit assignee dialog */}
+      {/* Edit card dialog */}
       <Dialog open={!!editCard} onOpenChange={(open) => !open && setEditCard(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editCard?.title}</DialogTitle>
+            <DialogTitle>Edit Item</DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col gap-1.5 py-2">
-            <label className="text-sm font-medium">Assign to</label>
-            <Select value={editAssignee} onValueChange={setEditAssignee}>
-              <SelectTrigger>
-                <SelectValue placeholder="Unassigned" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Unassigned</SelectItem>
-                {profiles.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.full_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium">Title</label>
+              <Input
+                value={editTitle}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setEditTitle(e.target.value)
+                }
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium">Description</label>
+              <Input
+                placeholder="Add a description..."
+                value={editDescription}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setEditDescription(e.target.value)
+                }
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium">Priority</label>
+                <Select value={editPriority} onValueChange={setEditPriority}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="None" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium">Due Date</label>
+                <Input
+                  type="date"
+                  value={editDueDate}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setEditDueDate(e.target.value)
+                  }
+                />
+              </div>
+            </div>
+            {profiles.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium">Assign to</label>
+                <Select value={editAssignee} onValueChange={setEditAssignee}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Unassigned" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Unassigned</SelectItem>
+                    {profiles.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.full_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setEditCard(null)}>

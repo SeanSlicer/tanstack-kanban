@@ -56,6 +56,8 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({
   const [newDescription, setNewDescription] = useState("");
   const [newColumn, setNewColumn] = useState<Card["column_name"]>("todo");
   const [newAssignee, setNewAssignee] = useState("none");
+  const [newPriority, setNewPriority] = useState("none");
+  const [newDueDate, setNewDueDate] = useState("");
   const [activeView, setActiveView] = useState<"board" | "backlog">("board");
 
   const profilesMap = Object.fromEntries(profiles.map((p) => [p.id, p]));
@@ -135,11 +137,15 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({
       description: newDescription.trim() || null,
       position: cards.filter((c) => c.column_name === newColumn).length,
       assigned_to: newAssignee === "none" ? null : newAssignee,
+      priority: newPriority === "none" ? undefined : (newPriority as Card["priority"]),
+      due_date: newDueDate || undefined,
     });
     setNewTitle("");
     setNewDescription("");
     setNewColumn("todo");
     setNewAssignee("none");
+    setNewPriority("none");
+    setNewDueDate("");
     setDialogOpen(false);
   };
 
@@ -271,6 +277,26 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({
                 <SelectItem value="done">Done</SelectItem>
               </SelectContent>
             </Select>
+            <div className="grid grid-cols-2 gap-3">
+              <Select value={newPriority} onValueChange={setNewPriority}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No priority</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                type="date"
+                value={newDueDate}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setNewDueDate(e.target.value)
+                }
+              />
+            </div>
             {profiles.length > 0 && (
               <Select value={newAssignee} onValueChange={setNewAssignee}>
                 <SelectTrigger>
