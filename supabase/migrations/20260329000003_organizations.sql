@@ -1,20 +1,5 @@
 -- ================================================================
--- Helper functions (SECURITY DEFINER avoids recursive RLS lookups)
--- ================================================================
-
-CREATE OR REPLACE FUNCTION public.get_my_org_ids()
-RETURNS SETOF uuid LANGUAGE sql SECURITY DEFINER STABLE AS $$
-  SELECT org_id FROM public.organization_members WHERE user_id = auth.uid();
-$$;
-
-CREATE OR REPLACE FUNCTION public.get_my_leader_org_ids()
-RETURNS SETOF uuid LANGUAGE sql SECURITY DEFINER STABLE AS $$
-  SELECT org_id FROM public.organization_members
-  WHERE user_id = auth.uid() AND role = 'leader';
-$$;
-
--- ================================================================
--- New tables
+-- Tables first (functions below reference these)
 -- ================================================================
 
 CREATE TABLE IF NOT EXISTS public.organizations (
@@ -64,6 +49,22 @@ ALTER TABLE public.cards ADD COLUMN IF NOT EXISTS due_date date;
 GRANT ALL ON public.organizations TO authenticated;
 GRANT ALL ON public.organization_members TO authenticated;
 GRANT ALL ON public.board_members TO authenticated;
+
+-- ================================================================
+-- Helper functions (SECURITY DEFINER avoids recursive RLS lookups)
+-- Must come after tables exist so the sql function bodies validate
+-- ================================================================
+
+CREATE OR REPLACE FUNCTION public.get_my_org_ids()
+RETURNS SETOF uuid LANGUAGE sql SECURITY DEFINER STABLE AS $$
+  SELECT org_id FROM public.organization_members WHERE user_id = auth.uid();
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_my_leader_org_ids()
+RETURNS SETOF uuid LANGUAGE sql SECURITY DEFINER STABLE AS $$
+  SELECT org_id FROM public.organization_members
+  WHERE user_id = auth.uid() AND role = 'leader';
+$$;
 
 -- ================================================================
 -- RLS: organizations
