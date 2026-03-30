@@ -65,6 +65,22 @@ export const useDeleteOrganization = () => {
   });
 };
 
+// Returns the current user's membership rows across all orgs (role lookup)
+export const useMyOrgMemberships = () =>
+  useQuery<OrgMember[]>({
+    queryKey: ["org_members", "me"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
+      const { data, error } = await supabase
+        .from("organization_members")
+        .select("*")
+        .eq("user_id", user.id);
+      if (error) throw new Error(error.message);
+      return data as OrgMember[];
+    },
+  });
+
 // ─── Organization members ─────────────────────────────────────────
 
 export const useOrgMembers = (orgId: string) =>
