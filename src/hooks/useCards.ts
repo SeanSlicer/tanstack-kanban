@@ -2,7 +2,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
 import type { Card } from "../lib/supabase";
 
-// Fetch cards for a specific board
 export const useCards = (boardId: string) => {
   return useQuery<Card[], Error>({
     queryKey: ["cards", boardId],
@@ -18,11 +17,15 @@ export const useCards = (boardId: string) => {
   });
 };
 
-// Create a new card
+type CreateCardInput = Omit<Card, "id" | "created_at" | "priority" | "due_date"> & {
+  priority?: Card["priority"];
+  due_date?: Card["due_date"];
+};
+
 export const useCreateCard = () => {
   const queryClient = useQueryClient();
 
-  return useMutation<Card, Error, Omit<Card, "id" | "created_at">>({
+  return useMutation<Card, Error, CreateCardInput>({
     mutationFn: async (card) => {
       const { data, error } = await supabase
         .from("cards")
@@ -40,15 +43,19 @@ export const useCreateCard = () => {
   });
 };
 
-// Update a card's fields (e.g. assigned_to)
+// Generalised update — pass any subset of editable card fields
+type CardUpdate = Partial<
+  Pick<Card, "assigned_to" | "priority" | "due_date" | "title" | "description">
+>;
+
 export const useUpdateCard = () => {
   const queryClient = useQueryClient();
 
-  return useMutation<Card, Error, { cardId: string; assigned_to: string | null }>({
-    mutationFn: async ({ cardId, assigned_to }) => {
+  return useMutation<Card, Error, { cardId: string } & CardUpdate>({
+    mutationFn: async ({ cardId, ...updates }) => {
       const { data, error } = await supabase
         .from("cards")
-        .update({ assigned_to })
+        .update(updates)
         .eq("id", cardId)
         .select()
         .single();
@@ -56,12 +63,13 @@ export const useUpdateCard = () => {
       return data as Card;
     },
     onSuccess: (updatedCard) => {
-      queryClient.invalidateQueries({ queryKey: ["cards", updatedCard.board_id] });
+      queryClient.invalidateQueries({
+        queryKey: ["cards", updatedCard.board_id],
+      });
     },
   });
 };
 
-// Move a card
 export const useMoveCard = () => {
   const queryClient = useQueryClient();
 
@@ -82,22 +90,19 @@ export const useMoveCard = () => {
     },
     onMutate: async ({ cardId, position, column_name }) => {
       await queryClient.cancelQueries({ queryKey: ["cards"] });
-
       const previousCards = queryClient.getQueryData<Card[]>(["cards"]);
-
       queryClient.setQueryData<Card[]>(["cards"], (old) => {
         if (!old) return old;
-        return old.map((card: Card) =>
+        return old.map((card) =>
           card.id === cardId ? { ...card, position, column_name } : card,
         );
       });
-
       return { previousCards };
     },
-    onError: (_error, _variables, context) => {
-      const safeContext = context as { previousCards?: Card[] } | undefined;
-      if (safeContext?.previousCards) {
-        queryClient.setQueryData(["cards"], safeContext.previousCards);
+    onError: (_err, _vars, context) => {
+      const ctx = context as { previousCards?: Card[] } | undefined;
+      if (ctx?.previousCards) {
+        queryClient.setQueryData(["cards"], ctx.previousCards);
       }
     },
     onSettled: () => {

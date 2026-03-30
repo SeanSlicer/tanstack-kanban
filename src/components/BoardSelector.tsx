@@ -31,7 +31,7 @@ const BoardSelector: React.FC<BoardSelectorProps> = ({
 
   const handleCreate = () => {
     if (!newBoardTitle.trim()) return;
-    createBoard.mutate(newBoardTitle.trim(), {
+    createBoard.mutate({ title: newBoardTitle.trim() }, {
       onSuccess: (board) => {
         setNewBoardTitle("");
         setCreating(false);
