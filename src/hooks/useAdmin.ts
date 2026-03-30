@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../lib/supabase";
-import type { Board, Card } from "../lib/supabase";
+import type { Board, Card, Organization } from "../lib/supabase";
 
 export const useAllBoards = () => {
   return useQuery<Board[]>({
@@ -89,6 +89,37 @@ export const useAdminDeleteCard = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "cards"] });
+    },
+  });
+};
+
+export const useAllOrganizations = () =>
+  useQuery<Organization[]>({
+    queryKey: ["admin", "organizations"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("organizations")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw new Error(error.message);
+      return data as Organization[];
+    },
+  });
+
+export const useAdminDeleteOrganization = () => {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: async (orgId) => {
+      const { error } = await supabase
+        .from("organizations")
+        .delete()
+        .eq("id", orgId);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "organizations"] });
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "boards"] });
     },
   });
 };

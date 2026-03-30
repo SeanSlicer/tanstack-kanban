@@ -7,14 +7,16 @@ import { useProfiles } from "../hooks/useProfile";
 import {
   useAllBoards,
   useAllCards,
+  useAllOrganizations,
   useToggleAdmin,
   useCreateTestUser,
   useAdminDeleteBoard,
   useAdminDeleteCard,
   useAdminDeleteProfile,
+  useAdminDeleteOrganization,
 } from "../hooks/useAdmin";
 
-type Tab = "overview" | "users" | "boards" | "cards" | "create-user";
+type Tab = "overview" | "users" | "orgs" | "boards" | "cards" | "create-user";
 
 const columnLabel: Record<string, string> = {
   todo: "Todo",
@@ -30,12 +32,14 @@ const AdminPage: React.FC = () => {
   const { data: profiles = [] } = useProfiles();
   const { data: boards = [], isLoading: boardsLoading } = useAllBoards();
   const { data: cards = [], isLoading: cardsLoading } = useAllCards();
+  const { data: orgs = [] } = useAllOrganizations();
 
   const toggleAdmin = useToggleAdmin();
   const createTestUser = useCreateTestUser();
   const deleteBoard = useAdminDeleteBoard();
   const deleteCard = useAdminDeleteCard();
   const deleteProfile = useAdminDeleteProfile();
+  const deleteOrg = useAdminDeleteOrganization();
 
   // Create test user form state
   const [testFullName, setTestFullName] = useState("");
@@ -111,9 +115,15 @@ const AdminPage: React.FC = () => {
     );
   };
 
+  const handleDeleteOrg = (orgId: string, name: string) => {
+    if (!window.confirm(`Delete organization "${name}"? Boards will remain but lose their org association. This cannot be undone.`)) return;
+    deleteOrg.mutate(orgId);
+  };
+
   const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "Overview" },
     { id: "users", label: `Users (${profiles.length})` },
+    { id: "orgs", label: `Orgs (${orgs.length})` },
     { id: "boards", label: `Boards (${boards.length})` },
     { id: "cards", label: `Cards (${cards.length})` },
     { id: "create-user", label: "Create Test User" },
@@ -152,6 +162,7 @@ const AdminPage: React.FC = () => {
       {activeTab === "overview" && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard title="Total Users" value={profiles.length} />
+          <StatCard title="Organizations" value={orgs.length} />
           <StatCard title="Total Boards" value={boards.length} />
           <StatCard
             title="Board Cards"
@@ -161,10 +172,6 @@ const AdminPage: React.FC = () => {
           <StatCard
             title="Admin Users"
             value={profiles.filter((p) => p.is_admin).length}
-          />
-          <StatCard
-            title="Todo"
-            value={cards.filter((c) => c.column_name === "todo").length}
           />
           <StatCard
             title="In Progress"
@@ -245,6 +252,59 @@ const AdminPage: React.FC = () => {
           })}
           {profiles.length === 0 && !boardsLoading && (
             <p className="text-muted-foreground text-sm">No users found.</p>
+          )}
+        </div>
+      )}
+
+      {/* Organizations */}
+      {activeTab === "orgs" && (
+        <div className="flex flex-col gap-2">
+          {orgs.map((org) => {
+            const orgBoards = boards.filter((b) => b.org_id === org.id);
+            const creator = profilesMap[org.created_by ?? ""];
+            return (
+              <div
+                key={org.id}
+                className="flex items-center gap-4 p-4 rounded-lg border border-border bg-card"
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{org.name}</p>
+                  {org.description && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{org.description}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Created by {creator?.full_name ?? "unknown"}
+                  </p>
+                </div>
+                <div className="text-xs text-muted-foreground text-right shrink-0 hidden sm:block">
+                  <p>{orgBoards.length} boards</p>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-7"
+                    onClick={() =>
+                      navigate({ to: "/org/$orgId", params: { orgId: org.id } })
+                    }
+                  >
+                    Manage
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs h-7 text-destructive hover:text-destructive"
+                    onClick={() => handleDeleteOrg(org.id, org.name)}
+                    disabled={deleteOrg.isPending}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+          {orgs.length === 0 && (
+            <p className="text-muted-foreground text-sm">No organizations found.</p>
           )}
         </div>
       )}
