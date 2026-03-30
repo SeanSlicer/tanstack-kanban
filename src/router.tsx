@@ -15,6 +15,7 @@ import AuthPage from "./components/AuthPage";
 import BoardSelector from "./components/BoardSelector";
 import KanbanBoard from "./components/KanbanBoard";
 import AdminPage from "./components/AdminPage";
+import OrgManagementPage from "./components/OrgManagementPage";
 
 const checkAuth = async () => {
   const {
@@ -121,11 +122,41 @@ const adminRoute = createRoute({
   component: AdminPage,
 });
 
+const orgRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/org/$orgId",
+  beforeLoad: async ({ params }) => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) throw redirect({ to: "/login" });
+    // Allow admins and org leaders
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("is_admin")
+      .eq("id", session.user.id)
+      .single();
+    if (profile?.is_admin) return; // admins always allowed
+    const { data: membership } = await supabase
+      .from("organization_members")
+      .select("role")
+      .eq("org_id", params.orgId)
+      .eq("user_id", session.user.id)
+      .single();
+    if (membership?.role !== "leader") throw redirect({ to: "/" });
+  },
+  component: function OrgManagementPageWrapper() {
+    const { orgId } = useParams({ from: "/org/$orgId" });
+    return <OrgManagementPage orgId={orgId} />;
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   indexRoute,
   boardRoute,
   adminRoute,
+  orgRoute,
 ]);
 
 export const router = createRouter({ routeTree });
