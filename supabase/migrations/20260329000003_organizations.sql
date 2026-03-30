@@ -124,35 +124,42 @@ CREATE POLICY "admins can manage all org members" ON public.organization_members
 -- RLS: board_members
 -- ================================================================
 
+-- Helper: board IDs the current user owns or leads via org.
+-- SECURITY DEFINER bypasses boards/org_members RLS → no recursion.
+-- Also defined (as CREATE OR REPLACE) in 20260330000002_fix_rls_recursion.sql.
+CREATE OR REPLACE FUNCTION public.get_my_managed_board_ids()
+RETURNS SETOF uuid LANGUAGE sql SECURITY DEFINER STABLE AS $$
+  SELECT id FROM public.boards WHERE user_id = auth.uid()
+  UNION
+  SELECT b.id FROM public.boards b
+    INNER JOIN public.organization_members om
+      ON om.org_id = b.org_id
+     AND om.user_id = auth.uid()
+     AND om.role = 'leader'
+  WHERE b.org_id IS NOT NULL
+$$;
+
+-- NOTE: board_members policies must NOT contain inline `boards` subqueries
+-- or they cause infinite recursion with the boards RLS policies.
+-- get_my_managed_board_ids() is SECURITY DEFINER and bypasses boards RLS.
+-- It is defined in migration 20260330000002_fix_rls_recursion.sql which
+-- runs after this file, so these policies reference a function that may
+-- not exist yet on a fresh install.  The function is idempotent so the
+-- fix migration is safe to run even on a fresh DB.
+
 DROP POLICY IF EXISTS "users can view their board assignments" ON public.board_members;
 CREATE POLICY "users can view their board assignments" ON public.board_members
   FOR SELECT TO authenticated
   USING (
     user_id = auth.uid()
-    OR board_id IN (SELECT id FROM public.boards WHERE user_id = auth.uid())
-    OR board_id IN (
-      SELECT b.id FROM public.boards b
-      WHERE b.org_id IN (SELECT public.get_my_leader_org_ids())
-    )
+    OR board_id IN (SELECT public.get_my_managed_board_ids())
   );
 
 DROP POLICY IF EXISTS "board owners and org leaders can manage board members" ON public.board_members;
 CREATE POLICY "board owners and org leaders can manage board members" ON public.board_members
   FOR ALL TO authenticated
-  USING (
-    board_id IN (SELECT id FROM public.boards WHERE user_id = auth.uid())
-    OR board_id IN (
-      SELECT b.id FROM public.boards b
-      WHERE b.org_id IN (SELECT public.get_my_leader_org_ids())
-    )
-  )
-  WITH CHECK (
-    board_id IN (SELECT id FROM public.boards WHERE user_id = auth.uid())
-    OR board_id IN (
-      SELECT b.id FROM public.boards b
-      WHERE b.org_id IN (SELECT public.get_my_leader_org_ids())
-    )
-  );
+  USING  (board_id IN (SELECT public.get_my_managed_board_ids()))
+  WITH CHECK (board_id IN (SELECT public.get_my_managed_board_ids()));
 
 DROP POLICY IF EXISTS "admins can manage all board members" ON public.board_members;
 CREATE POLICY "admins can manage all board members" ON public.board_members
