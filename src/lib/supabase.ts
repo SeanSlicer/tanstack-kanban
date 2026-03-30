@@ -16,9 +16,10 @@ export type Board = {
 export type Card = {
   id: string
   board_id: string
-  column_name: 'todo' | 'in_progress' | 'done'
+  column_name: 'todo' | 'in_progress' | 'done' | 'backlog'
   title: string
   description: string | null
   position: number
+  assigned_to: string | null
   created_at: string
 }

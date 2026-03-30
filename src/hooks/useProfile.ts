@@ -9,6 +9,20 @@ export type Profile = {
   created_at: string;
 };
 
+export const useProfiles = () => {
+  return useQuery<Profile[]>({
+    queryKey: ["profiles"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name, email, avatar_url, created_at")
+        .order("full_name");
+      if (error) throw new Error(error.message);
+      return data as Profile[];
+    },
+  });
+};
+
 export const useProfile = (userId: string) => {
   return useQuery<Profile>({
     queryKey: ["profile", userId],

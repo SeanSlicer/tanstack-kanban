@@ -2,21 +2,24 @@ import { useDroppable } from "@dnd-kit/core";
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import type { Card as CardType } from "../lib/supabase";
+import type { Profile } from "../hooks/useProfile";
 import KanbanCard from "./KanbanCard";
 
 interface KanbanColumnProps {
-  columnName: "todo" | "in_progress" | "done";
+  columnName: "todo" | "in_progress" | "done" | "backlog";
   cards: CardType[];
   boardId: string;
+  profilesMap: Record<string, Profile>;
 }
 
 const columnLabels = {
   todo: "Todo",
   in_progress: "In Progress",
   done: "Done",
+  backlog: "Backlog",
 };
 
-const KanbanColumn: React.FC<KanbanColumnProps> = ({ columnName, cards }) => {
+const KanbanColumn: React.FC<KanbanColumnProps> = ({ columnName, cards, profilesMap }) => {
   const { setNodeRef, isOver } = useDroppable({ id: columnName });
 
   return (
@@ -36,7 +39,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ columnName, cards }) => {
       </CardHeader>
       <CardContent className="flex flex-col gap-2 flex-1">
         {cards.map((card) => (
-          <KanbanCard key={card.id} card={card} />
+          <KanbanCard key={card.id} card={card} profilesMap={profilesMap} />
         ))}
         {cards.length === 0 && (
           <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm border-2 border-dashed border-muted rounded-lg p-4">

@@ -40,6 +40,27 @@ export const useCreateCard = () => {
   });
 };
 
+// Update a card's fields (e.g. assigned_to)
+export const useUpdateCard = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<Card, Error, { cardId: string; assigned_to: string | null }>({
+    mutationFn: async ({ cardId, assigned_to }) => {
+      const { data, error } = await supabase
+        .from("cards")
+        .update({ assigned_to })
+        .eq("id", cardId)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+      return data as Card;
+    },
+    onSuccess: (updatedCard) => {
+      queryClient.invalidateQueries({ queryKey: ["cards", updatedCard.board_id] });
+    },
+  });
+};
+
 // Move a card
 export const useMoveCard = () => {
   const queryClient = useQueryClient();

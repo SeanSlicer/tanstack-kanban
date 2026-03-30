@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import {
@@ -12,6 +13,7 @@ import { useAuth } from "../hooks/useAuth";
 
 const AuthPage: React.FC = () => {
   const { signIn, signUp } = useAuth();
+  const navigate = useNavigate();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -55,6 +57,7 @@ const AuthPage: React.FC = () => {
     try {
       if (mode === "signin") {
         await signIn(email, password);
+        navigate({ to: "/" });
       } else {
         await signUp(email, password, fullName.trim());
         setSuccess(
