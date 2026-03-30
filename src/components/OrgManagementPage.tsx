@@ -29,6 +29,7 @@ import {
   useAssignBoardMember,
   useRemoveBoardMember,
 } from "../hooks/useOrganizations";
+import { useBoards, useAssignBoardToOrg } from "../hooks/useBoards";
 import { useProfiles } from "../hooks/useProfile";
 import type { OrgMember, Board } from "../lib/supabase";
 
@@ -40,7 +41,6 @@ interface OrgManagementPageProps {
 
 interface BoardMembersDialogProps {
   board: Board;
-  orgId: string;
   profilesMap: Record<string, { id: string; full_name: string; email: string }>;
   orgMemberIds: Set<string>;
   open: boolean;
@@ -76,9 +76,10 @@ const BoardMembersDialog: React.FC<BoardMembersDialogProps> = ({
           <DialogTitle>Board Access — {board.title}</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-4 py-2">
-          {boardMembers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No members assigned yet — all org members can see this board by default via RLS.</p>
-          ) : (
+          <p className="text-xs text-muted-foreground">
+            All org members can access this board. Assign specific members here to track explicit access grants.
+          </p>
+          {boardMembers.length > 0 && (
             <div className="flex flex-col gap-2">
               {boardMembers.map((bm) => {
                 const profile = profilesMap[bm.user_id];
@@ -139,48 +140,94 @@ const BoardMembersDialog: React.FC<BoardMembersDialogProps> = ({
 
 const OrgManagementPage: React.FC<OrgManagementPageProps> = ({ orgId }) => {
   const navigate = useNavigate();
-  const { data: orgs = [] } = useOrganizations();
+  const { data: orgs = [], isLoading: orgsLoading } = useOrganizations();
   const org = orgs.find((o) => o.id === orgId);
 
   const { data: orgMembers = [] } = useOrgMembers(orgId);
   const { data: orgBoards = [] } = useOrgBoards(orgId);
+  const { data: allBoards = [] } = useBoards();
   const { data: profiles = [] } = useProfiles();
   const addOrgMember = useAddOrgMember();
   const removeOrgMember = useRemoveOrgMember();
   const updateRole = useUpdateOrgMemberRole();
   const createBoard = useCreateOrgBoard();
+  const assignBoardToOrg = useAssignBoardToOrg();
 
   const [activeTab, setActiveTab] = useState<"members" | "boards">("members");
   const [addMemberId, setAddMemberId] = useState("none");
   const [addMemberRole, setAddMemberRole] = useState<OrgMember["role"]>("member");
+  const [addMemberError, setAddMemberError] = useState<string | null>(null);
   const [newBoardTitle, setNewBoardTitle] = useState("");
   const [creatingBoard, setCreatingBoard] = useState(false);
+  const [boardError, setBoardError] = useState<string | null>(null);
   const [boardMembersDialog, setBoardMembersDialog] = useState<Board | null>(null);
+  const [assignBoardId, setAssignBoardId] = useState("none");
+  const [assignBoardError, setAssignBoardError] = useState<string | null>(null);
 
   const profilesMap = Object.fromEntries(profiles.map((p) => [p.id, p]));
   const orgMemberIds = new Set(orgMembers.map((m) => m.user_id));
   const notInOrg = profiles.filter((p) => !orgMemberIds.has(p.id));
 
+  // Personal boards not yet in any org (available to assign)
+  const assignableBoards = allBoards.filter(
+    (b) => !b.org_id && !orgBoards.some((ob) => ob.id === b.id),
+  );
+
   const handleAddMember = () => {
     if (addMemberId === "none") return;
+    setAddMemberError(null);
     addOrgMember.mutate(
       { orgId, userId: addMemberId, role: addMemberRole },
-      { onSuccess: () => { setAddMemberId("none"); setAddMemberRole("member"); } },
+      {
+        onSuccess: () => { setAddMemberId("none"); setAddMemberRole("member"); },
+        onError: (err) => setAddMemberError(err.message),
+      },
     );
   };
 
   const handleCreateBoard = () => {
     if (!newBoardTitle.trim()) return;
+    setBoardError(null);
     createBoard.mutate(
       { title: newBoardTitle.trim(), orgId },
-      { onSuccess: () => { setNewBoardTitle(""); setCreatingBoard(false); } },
+      {
+        onSuccess: () => { setNewBoardTitle(""); setCreatingBoard(false); },
+        onError: (err) => setBoardError(err.message),
+      },
     );
   };
 
-  if (!org) {
+  const handleAssignBoard = () => {
+    if (assignBoardId === "none") return;
+    setAssignBoardError(null);
+    assignBoardToOrg.mutate(
+      { boardId: assignBoardId, orgId },
+      {
+        onSuccess: () => setAssignBoardId("none"),
+        onError: (err) => setAssignBoardError(err.message),
+      },
+    );
+  };
+
+  const handleRemoveBoardFromOrg = (boardId: string) => {
+    assignBoardToOrg.mutate({ boardId, orgId: null });
+  };
+
+  if (orgsLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground text-sm">Loading...</p>
+      </div>
+    );
+  }
+
+  if (!org) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center gap-4">
         <p className="text-muted-foreground">Organization not found.</p>
+        <Button variant="ghost" size="sm" onClick={() => navigate({ to: "/" })}>
+          ← Back
+        </Button>
       </div>
     );
   }
@@ -189,17 +236,15 @@ const OrgManagementPage: React.FC<OrgManagementPageProps> = ({ orgId }) => {
     <div className="min-h-screen bg-background text-foreground p-8">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate({ to: "/" })}>
-              ← Back
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold">{org.name}</h1>
-              {org.description && (
-                <p className="text-sm text-muted-foreground mt-0.5">{org.description}</p>
-              )}
-            </div>
+        <div className="flex items-center gap-4 mb-8">
+          <Button variant="ghost" size="sm" onClick={() => navigate({ to: "/" })}>
+            ← Back
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold">{org.name}</h1>
+            {org.description && (
+              <p className="text-sm text-muted-foreground mt-0.5">{org.description}</p>
+            )}
           </div>
         </div>
 
@@ -282,38 +327,43 @@ const OrgManagementPage: React.FC<OrgManagementPageProps> = ({ orgId }) => {
                 <CardHeader className="pb-2 pt-4 px-4">
                   <CardTitle className="text-sm">Add Member</CardTitle>
                 </CardHeader>
-                <CardContent className="px-4 pb-4 flex gap-2">
-                  <Select value={addMemberId} onValueChange={setAddMemberId}>
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Select user..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Select user</SelectItem>
-                      {notInOrg.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.full_name} — {p.email}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={addMemberRole}
-                    onValueChange={(v: OrgMember["role"]) => setAddMemberRole(v)}
-                  >
-                    <SelectTrigger className="w-28">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="member">Member</SelectItem>
-                      <SelectItem value="leader">Leader</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    onClick={handleAddMember}
-                    disabled={addMemberId === "none" || addOrgMember.isPending}
-                  >
-                    Add
-                  </Button>
+                <CardContent className="px-4 pb-4 flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    <Select value={addMemberId} onValueChange={setAddMemberId}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Select user..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Select user</SelectItem>
+                        {notInOrg.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.full_name} — {p.email}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value={addMemberRole}
+                      onValueChange={(v: OrgMember["role"]) => setAddMemberRole(v)}
+                    >
+                      <SelectTrigger className="w-28">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="member">Member</SelectItem>
+                        <SelectItem value="leader">Leader</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      onClick={handleAddMember}
+                      disabled={addMemberId === "none" || addOrgMember.isPending}
+                    >
+                      {addOrgMember.isPending ? "Adding..." : "Add"}
+                    </Button>
+                  </div>
+                  {addMemberError && (
+                    <p className="text-xs text-destructive">{addMemberError}</p>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -348,7 +398,16 @@ const OrgManagementPage: React.FC<OrgManagementPageProps> = ({ orgId }) => {
                         className="h-8 text-xs"
                         onClick={() => setBoardMembersDialog(board)}
                       >
-                        Manage Access
+                        Access
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 text-xs text-destructive hover:text-destructive"
+                        onClick={() => handleRemoveBoardFromOrg(board.id)}
+                        disabled={assignBoardToOrg.isPending}
+                      >
+                        Remove
                       </Button>
                     </CardContent>
                   </Card>
@@ -356,27 +415,31 @@ const OrgManagementPage: React.FC<OrgManagementPageProps> = ({ orgId }) => {
               </div>
             )}
 
+            {/* Create new board */}
             {creatingBoard ? (
               <Card>
-                <CardContent className="py-3 px-4 flex gap-2">
-                  <Input
-                    autoFocus
-                    placeholder="Board name"
-                    value={newBoardTitle}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      setNewBoardTitle(e.target.value)
-                    }
-                    onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                      if (e.key === "Enter") handleCreateBoard();
-                      if (e.key === "Escape") setCreatingBoard(false);
-                    }}
-                  />
-                  <Button onClick={handleCreateBoard} disabled={createBoard.isPending || !newBoardTitle.trim()}>
-                    {createBoard.isPending ? "Creating..." : "Create"}
-                  </Button>
-                  <Button variant="ghost" onClick={() => setCreatingBoard(false)}>
-                    Cancel
-                  </Button>
+                <CardContent className="py-3 px-4 flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    <Input
+                      autoFocus
+                      placeholder="Board name"
+                      value={newBoardTitle}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                        setNewBoardTitle(e.target.value)
+                      }
+                      onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                        if (e.key === "Enter") handleCreateBoard();
+                        if (e.key === "Escape") setCreatingBoard(false);
+                      }}
+                    />
+                    <Button onClick={handleCreateBoard} disabled={createBoard.isPending || !newBoardTitle.trim()}>
+                      {createBoard.isPending ? "Creating..." : "Create"}
+                    </Button>
+                    <Button variant="ghost" onClick={() => { setCreatingBoard(false); setBoardError(null); }}>
+                      Cancel
+                    </Button>
+                  </div>
+                  {boardError && <p className="text-xs text-destructive">{boardError}</p>}
                 </CardContent>
               </Card>
             ) : (
@@ -388,6 +451,44 @@ const OrgManagementPage: React.FC<OrgManagementPageProps> = ({ orgId }) => {
                 + New Board
               </Button>
             )}
+
+            {/* Assign existing board to this org */}
+            {assignableBoards.length > 0 && (
+              <Card>
+                <CardHeader className="pb-2 pt-4 px-4">
+                  <CardTitle className="text-sm">Assign Existing Board</CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-4 flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    <Select value={assignBoardId} onValueChange={setAssignBoardId}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Select a board..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Select board</SelectItem>
+                        {assignableBoards.map((b) => (
+                          <SelectItem key={b.id} value={b.id}>
+                            {b.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      onClick={handleAssignBoard}
+                      disabled={assignBoardId === "none" || assignBoardToOrg.isPending}
+                    >
+                      {assignBoardToOrg.isPending ? "Assigning..." : "Assign"}
+                    </Button>
+                  </div>
+                  {assignBoardError && (
+                    <p className="text-xs text-destructive">{assignBoardError}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Assigns a personal board to this org. It will be visible to all org members.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
       </div>
@@ -396,7 +497,6 @@ const OrgManagementPage: React.FC<OrgManagementPageProps> = ({ orgId }) => {
       {boardMembersDialog && (
         <BoardMembersDialog
           board={boardMembersDialog}
-          orgId={orgId}
           profilesMap={profilesMap}
           orgMemberIds={orgMemberIds}
           open={!!boardMembersDialog}

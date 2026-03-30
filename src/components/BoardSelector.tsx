@@ -55,6 +55,7 @@ const BoardSelector: React.FC<BoardSelectorProps> = ({
   const [orgDialogOpen, setOrgDialogOpen] = useState(false);
   const [newOrgName, setNewOrgName] = useState("");
   const [newOrgDesc, setNewOrgDesc] = useState("");
+  const [orgCreateError, setOrgCreateError] = useState<string | null>(null);
 
   // Role lookup: orgId -> 'leader' | 'member'
   const myRoleMap = Object.fromEntries(
@@ -96,14 +97,17 @@ const BoardSelector: React.FC<BoardSelectorProps> = ({
 
   const handleCreateOrg = () => {
     if (!newOrgName.trim()) return;
+    setOrgCreateError(null);
     createOrg.mutate(
       { name: newOrgName.trim(), description: newOrgDesc.trim() || undefined },
       {
-        onSuccess: () => {
+        onSuccess: (org) => {
           setNewOrgName("");
           setNewOrgDesc("");
           setOrgDialogOpen(false);
+          navigate({ to: "/org/$orgId", params: { orgId: org.id } });
         },
+        onError: (err) => setOrgCreateError(err.message),
       },
     );
   };
@@ -327,9 +331,12 @@ const BoardSelector: React.FC<BoardSelectorProps> = ({
                 setNewOrgDesc(e.target.value)
               }
             />
+            {orgCreateError && (
+              <p className="text-xs text-destructive">{orgCreateError}</p>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setOrgDialogOpen(false)}>
+            <Button variant="ghost" onClick={() => { setOrgDialogOpen(false); setOrgCreateError(null); }}>
               Cancel
             </Button>
             <Button
