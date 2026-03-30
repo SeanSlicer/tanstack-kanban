@@ -16,6 +16,23 @@ export const useBoards = () => {
   });
 };
 
+export const useAssignBoardToOrg = () => {
+  const queryClient = useQueryClient();
+  return useMutation<void, Error, { boardId: string; orgId: string | null }>({
+    mutationFn: async ({ boardId, orgId }) => {
+      const { error } = await supabase
+        .from("boards")
+        .update({ org_id: orgId })
+        .eq("id", boardId);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: (_, { orgId }) => {
+      queryClient.invalidateQueries({ queryKey: ["boards"] });
+      if (orgId) queryClient.invalidateQueries({ queryKey: ["boards", "org", orgId] });
+    },
+  });
+};
+
 export const useCreateBoard = () => {
   const queryClient = useQueryClient();
 

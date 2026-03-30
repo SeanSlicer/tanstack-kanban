@@ -21,10 +21,10 @@ export const useCreateOrganization = () => {
   const queryClient = useQueryClient();
   return useMutation<Organization, Error, { name: string; description?: string }>({
     mutationFn: async ({ name, description }) => {
-      const { data: { user } } = await supabase.auth.getUser();
+      // created_by defaults to auth.uid() in the DB; trigger auto-adds creator as leader
       const { data, error } = await supabase
         .from("organizations")
-        .insert({ name, description: description?.trim() || null, created_by: user?.id })
+        .insert({ name, description: description?.trim() || null })
         .select()
         .single();
       if (error) throw new Error(error.message);
@@ -33,6 +33,7 @@ export const useCreateOrganization = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["organizations"] });
       queryClient.invalidateQueries({ queryKey: ["org_members"] });
+      queryClient.invalidateQueries({ queryKey: ["boards"] });
     },
   });
 };
